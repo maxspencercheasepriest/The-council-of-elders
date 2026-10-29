@@ -1,0 +1,17 @@
+{
+  "name": "the-council-of-elders",
+  "version": "0.1.0",
+  "description": "A multiplayer hidden-traitor town builder. One councillor secretly leads a cult.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/simulate.js 100"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.22.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

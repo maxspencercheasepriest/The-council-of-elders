@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>The Council of Elders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&family=IM+Fell+English:ital@0;1&family=Alegreya+Sans:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="/style.css">
+<script type="importmap">{ "imports": { "three": "/vendor/three.module.js" } }</script>
+</head>
+<body>
+<div id="app">
+  <header id="bar">
+    <div class="brand">The Council of Elders</div>
+    <div id="stats"></div>
+  </header>
+
+  <section id="townWrap">
+    <canvas id="town"></canvas>
+    <div id="plotTag" hidden></div>
+    <div id="phaseBanner"></div>
+  </section>
+
+  <section id="panel">
+    <nav id="tabs">
+      <button data-tab="council" class="on">Council</button>
+      <button data-tab="log">Town record</button>
+      <button data-tab="secrets">Your secrets <span id="secretDot" hidden></span></button>
+      <button data-tab="chat">Talk</button>
+    </nav>
+    <div id="council" class="tab"></div>
+    <div id="log" class="tab" hidden></div>
+    <div id="secrets" class="tab" hidden></div>
+    <div id="chat" class="tab" hidden>
+      <div id="chatLines"></div>
+      <form id="chatForm"><input id="chatInput" maxlength="240" placeholder="Speak to the council" autocomplete="off"><button>Say</button></form>
+    </div>
+  </section>
+</div>
+<div id="toast" hidden></div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>
