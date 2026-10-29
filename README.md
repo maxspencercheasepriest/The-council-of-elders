@@ -2,36 +2,65 @@
 
 A multiplayer hidden-traitor town builder for 3 to 6 players, with bots to fill empty seats. Think Town of Salem crossed with a city builder, where nothing happens without a council vote.
 
-You are the elders of Ashworth, a small low-poly town. Together you decide what gets built. One of you secretly leads the Hollow Order, a cult that needs buildings raised on hidden plots (four, or three with 5–6 players) and consecrated at night. Catch them before the rite is complete.
+You are the elders of Ashworth, a small low-poly town. Together you decide what gets built. One of you secretly leads the Hollow Order, a cult that needs buildings raised on four hidden plots and consecrated at night. Catch them before the rite is complete, and keep enough timber stored to survive the winter.
 
 Best played over voice chat.
 
 ## How a day works
 
-1. **Motions.** Each councillor tables one motion: build something on a plot, pull a building down, or call for someone's exile. Or table nothing.
-2. **Vote.** Everyone votes Aye or Nay on every motion. Majority wins; the Mayor breaks ties. Votes are recorded in the town record, so you can see who backed what.
-3. **Night.** Councillors with night duties act in secret. The cult leader takes a villager, then either consecrates a building or frames a councillor so they read as hollow to the Priest.
-4. **Dawn.** The town learns who went missing. Each councillor gets private findings in the **Your secrets** tab.
+1. **Morning.** A report shows what happened in the night: who was taken and from which house, any attack that was stopped, any fire. Houses that people vanished from are marked on the map.
+2. **Motions.** Each councillor tables one motion: build something on a plot, pull a building down, or call for someone's exile. Or table nothing.
+3. **Vote.** Everyone votes Aye or Nay on every motion. Majority wins; the Mayor breaks ties. Votes are recorded in the town record.
+4. **Night.** Everyone chooses one thing to do. Most actions mean leaving home, and others may be watching.
 
-## The council
+## Night actions
 
-| Seat | Night duty |
+Every councillor can **work late at the sawpit** (+1 timber), **watch a councillor's door** from their window (learn whether they went out), or **stay in and sleep**. Each role also has its own options:
+
+| Seat | Night options |
 |---|---|
-| Mayor | Breaks tied votes. On odd nights, learns one councillor who can be trusted. |
-| Constable | Guards one house. With a Watchtower, glimpses the intruder (one of two names). |
-| Priest | Reads one councillor's soul. Every second night, or every night with a Chapel. A framed councillor reads as hollow. |
-| Huntsman | Needs a Lodge. When the cult consecrates, learns the row or column the tracks ran along. |
-| Guildmaster | Inspects one building to see if it has been consecrated. |
-| Alderman | No night duty. Just a vote and a voice. |
+| Mayor | Every second night, check the ledgers to learn one councillor who can be trusted. Once per game, call a curfew: no one can be taken that night. Breaks tied votes. |
+| Constable | Guard a house. With a Watchtower, glimpse the intruder (one of two names). |
+| Priest | Read a councillor's soul: every night with a Chapel, otherwise every second night. On other nights, bless a house to protect it. |
+| Huntsman | With a Lodge, follow tracks: when the cult consecrates, learn the row or column. Without one, fell trees for +2 timber. |
+| Guildmaster | Inspect a building to see if it has been consecrated. |
+| Alderman | Shadow a councillor: learn whether they left home and every place they went. |
 
-Seats are dealt in that order, so a 3-player game has Mayor, Constable and Priest. Any one of the players can be the cult leader, and they keep their seat's powers, which means they can lie about what they learned.
+Seats are dealt in that order, so a 3-player game has Mayor, Constable and Priest. Any player can be the cult leader. They keep their seat's powers, which means they can lie about what they learned.
+
+Someone seen at a building their job gives them no reason to visit is worth asking about.
+
+## The Hollow Order
+
+On top of their ordinary night action, the cult leader can each night:
+
+- **Take a villager** from a house, unless it's guarded, blessed or under curfew.
+- **Perform one rite:**
+  - **Consecrate** a building. Any building on a ritual plot counts toward the rite.
+  - **Frame** a councillor, so they read as hollow to the Priest that night.
+  - **Burn** the timber store, destroying about 40% of it.
+  - **Recruit** a councillor (once per game, and only with at least four honest councillors left). The recruit becomes a secret acolyte: they know the leader and the ritual plots, keep their seat's powers, read as hollow to the Priest, and win if the Order wins.
 
 ## How it ends
 
-- **The council wins** if it exiles the cult leader, or survives to the end of day 12.
-- **The cult wins** if every ritual plot holds a consecrated building, if fewer than 3 villagers remain, or if only one honest councillor is left.
+- **The council wins** by exiling the cult leader, or by reaching the end of day 12 with enough timber stored for winter (12 plus 2 per player).
+- **The cult wins** if all four ritual plots hold consecrated buildings, if winter comes and the store is short, if fewer than 3 villagers remain, or if only one honest councillor is left.
 
-Exiling an innocent removes their seat and their powers for good.
+Exiling an innocent removes their seat and their powers for good. Exiling the acolyte exposes them, but the leader is still out there.
+
+## Buildings
+
+| Building | Timber | Effect |
+|---|---|---|
+| House | 6 | Homes 3 new villagers |
+| Workshop | 5 | +3 timber every dawn |
+| Mill | 4 | +2 timber every dawn |
+| Huntsman's Lodge | 6 | Unlocks the Huntsman's tracking |
+| Chapel | 8 | Priest can read every night |
+| Watchtower | 8 | Constable glimpses intruders |
+| Well | 3 | Cheap and popular. Suspiciously so. |
+
+The town starts with 10 timber and earns 3 each dawn, plus whatever its workshops and mills produce. Every building competes with the winter store. A councillor who keeps pushing for buildings out in empty corners, or for things the town can't afford, deserves a hard look.
 
 ## Statements
 
@@ -44,7 +73,8 @@ The host can add bots in the lobby to fill seats, down to playing solo against f
 - Honest bots use their night duty on whoever they suspect most and announce what they find at dawn.
 - They keep their own suspicion of each player, built from their clues, other players' statements, whose buildings turn out consecrated, and who votes to exile people they trust.
 - They only vote to exile on strong evidence, and grow wary of anyone who accuses them.
-- A cult bot builds on its ritual plots, frames people when the Priest is about, lies in its statements and accuses whoever accuses it.
+- They budget timber for winter and grow wary of councillors who propose buildings the town can't afford, or out in empty corners.
+- A cult bot builds on its ritual plots, frames, burns, recruits, lies in its statements and accuses whoever accuses it. A recruited acolyte bot covers for its leader.
 
 Bots can't read free chat, so use statements to tell them things.
 
@@ -128,7 +158,7 @@ Plays 100 games with random players over real websockets to check nothing stalls
 node test/botgames.js 2000
 ```
 
-Plays games where every seat is a bot and reports how often the council wins at each table size. Use it to check balance after changing the rules. At the moment the council wins about 55% of 3-player games and 70–75% of larger ones.
+Plays games where every seat is a bot and reports how often the council wins at each table size. Use it to check balance after changing the rules. At the moment the council wins roughly 45–60% of all-bot games at every table size.
 
 ## Project layout
 
@@ -151,6 +181,5 @@ test/botgames.js  all-bot balance test
 
 - Day timers, so the debate has a clock on it
 - More cult powers: forge a ledger, frame a councillor, sabotage a vote
-- Seasons, food and harvests so building choices matter more
 - Sound: bells, crows, wind
 - Villagers who notice things and whisper to councillors

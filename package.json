@@ -1,6 +1,6 @@
 {
   "name": "the-council-of-elders",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A multiplayer hidden-traitor town builder. One councillor secretly leads a cult.",
   "main": "electron/main.js",
   "scripts": {

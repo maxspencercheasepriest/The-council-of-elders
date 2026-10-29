@@ -30,7 +30,8 @@ button, input, select { font: inherit; color: inherit; }
   padding: 10px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left));
   padding-top: max(10px, env(safe-area-inset-top)); border-bottom: 1px solid var(--rule); }
 .brand { font: 22px var(--display); color: var(--gold); letter-spacing: .02em; }
-#stats { display: flex; gap: 14px; font-size: 14px; color: var(--dim); font-variant-numeric: tabular-nums; }
+#stats { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 14px; color: var(--dim); font-variant-numeric: tabular-nums; }
+#stats > span { white-space: nowrap; }
 #stats b { color: var(--parch); font-weight: 500; }
 
 #townWrap { position: relative; min-height: 0; overflow: hidden; background: #0e0c0b; }
@@ -90,3 +91,8 @@ input[type=text], #chatInput { background: #17120f; border: 1px solid var(--rule
 
 #toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: #4a1f1b; border: 1px solid var(--blood); padding: 10px 14px; border-radius: 4px; max-width: 90vw; z-index: 20; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+.morning { border: 1px solid var(--rule); border-left: 3px solid var(--blood); background: #2b211c; padding: 10px 12px; border-radius: 4px; margin-bottom: 12px; }
+.report { font-family: var(--serif); font-size: 16px; padding: 3px 0; }
+.report.loss { color: #e0a69c; }
+.motion.sel { background: #2b231d; }

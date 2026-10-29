@@ -45,14 +45,18 @@ function think(b) {
       const ballots = {}; for (const m of s.proposals) ballots[m.id] = m.kind === 'exile' ? Math.random() < 0.3 : Math.random() < 0.7;
       send(b, { t: 'vote', ballots });
     } else if (s.phase === 'night') {
-      const a = {};
-      const d = s.you.duties;
-      if (d.includes('take') && houses.length) a.take = pick(houses);
-      if (d.includes('consecrate')) { const site = s.ritual.find(([x, y]) => s.grid[x][y] && !s.grid[x][y].consecrated); if (site) a.consecrate = { x: site[0], y: site[1] }; }
-      if (d.includes('guard') && houses.length) a.guard = pick(houses);
-      if (d.includes('inspect') && built.length) a.inspect = pick(built);
-      if (d.includes('read')) a.read = pick(others).id;
-      for (const k of Object.keys(a)) if (a[k] && a[k].x !== undefined) a[k] = { x: a[k].x, y: a[k].y };
+      const others = s.players.filter(p => !p.exiled && p.id !== s.you.id);
+      const choice = pick(s.you.options);
+      const kind = s.actions[choice].target;
+      const pickT = k => k === 'player' ? pick(others).id : k === 'house' ? (houses.length ? pick(houses) : null) : k === 'building' ? (built.length ? pick(built) : null) : undefined;
+      let a = { choice, target: pickT(kind) };
+      if (a.target === null) a = { choice: 'sleep' };
+      if (s.you.rites.length) {
+        a.take = houses.length && Math.random() < 0.8 ? pick(houses) : null;
+        const rite = pick(s.you.rites.concat([null]));
+        if (rite) { const t = pickT(s.riteInfo[rite].target); if (t !== null) { a.rite = rite; a.riteTarget = t; } }
+      }
+      for (const k of ['target', 'take', 'riteTarget']) if (a[k] && a[k].x !== undefined) a[k] = { x: a[k].x, y: a[k].y };
       send(b, { t: 'act', action: a });
     }
   }, 2);

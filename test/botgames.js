@@ -6,7 +6,7 @@ const bots = require('../bots');
 const GAMES = Number(process.argv[2] || 500);
 const byCount = {};
 const endings = {};
-let exiledInnocents = 0, totalDays = 0;
+let exiledInnocents = 0, totalDays = 0, recruits = 0;
 
 for (let i = 0; i < GAMES; i++) {
   const n = 3 + (i % 4);
@@ -24,13 +24,21 @@ for (let i = 0; i < GAMES; i++) {
   }
   const r = (byCount[n] = byCount[n] || { cult: 0, council: 0 });
   r[g.winner]++;
-  const why = g.log.filter(l => l.kind === 'news').pop().text.split(' ').slice(0, 5).join(' ').replace(/^\S+ is dragged/, 'X is dragged');
+  const last = g.log.filter(l => l.kind === 'news').pop().text;
+  const why = /dragged from the hall/.test(last) ? 'cult leader exiled'
+    : /consecrated building begins to hum/.test(last) ? 'rite completed'
+    : /keeps warm/.test(last) ? 'survived winter'
+    : /hearths go out/.test(last) ? 'froze in winter'
+    : /Too few villagers/.test(last) ? 'villagers all taken'
+    : /whittled away/.test(last) ? 'council whittled away' : last.slice(0, 40);
+  if (g.recruitUsed) recruits++;
   endings[why] = (endings[why] || 0) + 1;
   exiledInnocents += g.players.filter(p => p.exiled && !p.cult).length;
+  if (!g.lastNight && g.day > 1) throw new Error('No morning report');
   totalDays += g.day;
 }
 
 console.log(`${GAMES} all-bot games`);
 for (const [n, r] of Object.entries(byCount)) console.log(`  ${n} players: council ${Math.round(100 * r.council / (r.cult + r.council))}%`);
 console.log('Endings:', endings);
-console.log(`Average length ${(totalDays / GAMES).toFixed(1)} days, ${(exiledInnocents / GAMES).toFixed(2)} innocents exiled per game`);
+console.log(`Average length ${(totalDays / GAMES).toFixed(1)} days, ${(exiledInnocents / GAMES).toFixed(2)} councillors exiled who weren't the leader, recruiting used in ${Math.round(100 * recruits / GAMES)}% of games`);

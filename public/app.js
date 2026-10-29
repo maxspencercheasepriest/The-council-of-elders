@@ -102,12 +102,12 @@ function wireInvite(el) {
 function render() {
   if (!S) return renderEntry();
   const key = S.phase + S.day;
-  if (key !== phaseKey) { phaseKey = key; draft = { motion: 'build', type: 'house' }; picking = null; if (S.phase === 'propose') picking = 'plot'; }
+  if (key !== phaseKey) { phaseKey = key; draft = { motion: 'build', type: 'house' }; picking = null; if (S.phase === 'propose') picking = 'plot'; $('council').scrollTop = 0; }
 
   const alive = S.villagers.filter(v => !v.taken).length;
   $('stats').innerHTML = S.phase === 'lobby'
     ? `<span>Code <b>${esc(S.code)}</b></span>`
-    : `<span>Day <b>${S.day}</b>/${S.maxDays}</span><span>Timber <b>${S.wood}</b></span><span>Villagers <b>${alive}</b></span><span>Code <b>${esc(S.code)}</b></span>`;
+    : `<span>Day <b>${S.day}</b>/${S.maxDays}</span><span>Timber <b>${S.wood}</b> <span title="Timber gained each dawn">+${S.income}</span></span><span title="Timber the town must have stored when winter comes">Winter <b style="color:${S.wood >= S.winterNeed ? 'var(--moss)' : 'var(--parch)'}">${S.wood}/${S.winterNeed}</b></span><span>Villagers <b>${alive}</b></span><span>Code <b>${esc(S.code)}</b></span>`;
   if (isGuestInApp()) $('stats').insertAdjacentHTML('beforeend', '<button class="btn" id="homeTop" style="padding:2px 10px">My council</button>');
   if ($('homeTop')) $('homeTop').onclick = () => desk.home();
   $('phaseBanner').textContent = PHASE_LABEL[S.phase] || '';
@@ -144,9 +144,25 @@ function renderEntry() {
   town.update(null);
 }
 
+// What happened last night, at the top of the day so nobody misses it.
+function morningReport() {
+  const r = S.lastNight;
+  if (!r || S.phase === 'over' || S.phase === 'night' || r.night !== S.day - 1) return '';
+  const lines = r.events.map(e => {
+    if (e.kind === 'taken') return `<div class="report loss"><b>${esc(e.name)}</b> was taken from the house at <b>${plotName(e.x, e.y)}</b>. Chalk marks on the step: the Order's work.</div>`;
+    if (e.kind === 'saved') return `<div class="report">Someone tried to take a villager from <b>${plotName(e.x, e.y)}</b>, but ${esc(e.how)} stopped them.</div>`;
+    if (e.kind === 'burned') return `<div class="report loss">The timber store was set alight. <b>${e.amount} timber</b> was lost.</div>`;
+    if (e.kind === 'curfew') return `<div class="report">The Mayor's curfew held every door shut.</div>`;
+    return `<div class="report">A quiet night. No one was taken.</div>`;
+  }).join('');
+  const short = S.winterNeed - S.wood;
+  return `<div class="morning"><h3 style="margin-top:0">Night ${r.night}: what happened</h3>${lines}
+    <p class="hint" style="margin:6px 0 0">The town gained ${r.income} timber at dawn. ${short > 0 ? `It needs ${short} more before winter.` : 'The winter store is full.'}</p></div>`;
+}
+
 function seats(showDone) {
   return S.players.map(p => `<div class="seat ${p.exiled ? 'exiled' : ''}">
-    <span>${esc(p.name)}${p.bot ? ' · bot' : ''}${p.id === S.you.id ? ' (you)' : ''}${p.id === S.hostId ? ' · host' : ''}${p.connected ? '' : ' · away'}${p.bot && S.phase === 'lobby' && S.hostId === S.you.id ? ` <button class="btn" style="padding:2px 8px" data-unseat="${p.id}" aria-label="Remove ${esc(p.name)}">Remove</button>` : ''}${p.cult ? ' <span class="cultTag">· CULT LEADER</span>' : ''}</span>
+    <span>${esc(p.name)}${p.bot ? ' · bot' : ''}${p.id === S.you.id ? ' (you)' : ''}${p.id === S.hostId ? ' · host' : ''}${p.connected ? '' : ' · away'}${p.bot && S.phase === 'lobby' && S.hostId === S.you.id ? ` <button class="btn" style="padding:2px 8px" data-unseat="${p.id}" aria-label="Remove ${esc(p.name)}">Remove</button>` : ''}${p.cult ? ' <span class="cultTag">· CULT LEADER</span>' : p.acolyte ? ' <span class="cultTag">· ACOLYTE</span>' : ''}</span>
     <span class="role">${esc(p.role || '')} ${showDone && !p.exiled ? (p.done ? '<span class="tick">✓ done</span>' : '…') : ''}</span></div>`).join('');
 }
 
@@ -189,8 +205,10 @@ function renderCouncil() {
   let h = '';
 
   if (you && you.role && S.phase !== 'over') {
-    h += `<p class="hint">You are the <b style="color:var(--parch)">${esc(you.role)}</b>${you.cult ? ' and secretly <span class="cultTag">leader of the Hollow Order</span>' : ''}. ${esc(S.roleInfo[you.role])}</p>`;
-    if (you.cult) h += `<p class="hint">Ritual sites (marked red on the map): ${S.ritual.map(([x, y]) => plotName(x, y)).join(', ')}. Consecrated ${S.ritualProgress}/${S.ritualSites}.</p>`;
+    h += morningReport();
+    h += `<p class="hint">You are the <b style="color:var(--parch)">${esc(you.role)}</b>${you.cult ? ' and secretly <span class="cultTag">leader of the Hollow Order</span>' : you.acolyte ? ' and secretly <span class="cultTag">an acolyte of the Hollow Order</span>' : ''}. ${esc(S.roleInfo[you.role])}</p>`;
+    if (you.acolyte) { const l = S.players.find(p => p.cult); h += `<p class="hint">Your leader is <b style="color:var(--parch)">${esc(l ? l.name : '?')}</b>. Help their buildings pass, keep them from exile, and lie when it helps. You win if the Order wins.</p>`; }
+    if (you.cult || you.acolyte) h += `<p class="hint">Ritual sites (marked red on the map): ${S.ritual.map(([x, y]) => plotName(x, y)).join(', ')}. Consecrated ${S.ritualProgress}/${S.ritualSites}.</p>`;
   }
   if (you && you.exiled && S.phase !== 'over') h += `<p class="hint">You have been exiled. You may still watch and talk.</p>`;
 
@@ -232,8 +250,12 @@ function renderCouncil() {
         ${['build', 'demolish', 'exile'].map(k => `<button class="btn ${m === k ? 'sel' : ''}" data-motion="${k}">${{ build: 'Build', demolish: 'Pull down', exile: 'Call for exile' }[k]}</button>`).join('')}
         <button class="btn" id="passBtn">Table nothing</button></div>`;
       if (m === 'build') {
-        h += `<h3>What to build (town has ${S.wood} timber)</h3><div class="bgrid">${Object.entries(S.buildings).map(([k, b]) =>
-          `<button class="btn ${draft.type === k ? 'sel' : ''}" data-type="${k}">${esc(b.name)} · ${b.cost}<small>${esc(b.desc)}</small></button>`).join('')}</div>
+        const dawns = S.maxDays + 1 - S.day;
+        const projected = S.wood + S.income * dawns;
+        h += `<h3>What to build (town has ${S.wood} timber)</h3>
+          <p class="hint">At this rate the town will have about ${projected} timber when winter comes, against ${S.winterNeed} needed.</p>
+          <div class="bgrid">${Object.entries(S.buildings).map(([k, b]) =>
+          `<button class="btn ${draft.type === k ? 'sel' : ''}" data-type="${k}" ${b.cost > S.wood ? 'style="opacity:.55"' : ''}>${esc(b.name)} · ${b.cost}<small>${esc(b.desc)}${b.cost > S.wood ? ' Not enough timber.' : ''}</small></button>`).join('')}</div>
           <h3>Where</h3><p>${draft.plot ? `Plot <b>${plotName(draft.plot.x, draft.plot.y)}</b>` : '<span class="hint">Tap an empty plot on the map.</span>'}</p>`;
       } else if (m === 'demolish') {
         h += `<h3>Which building</h3><p>${draft.plot ? `Plot <b>${plotName(draft.plot.x, draft.plot.y)}</b>` : '<span class="hint">Tap a building on the map.</span>'}</p>`;
@@ -280,29 +302,53 @@ function renderCouncil() {
 
   if (S.phase === 'night') {
     h += `<h2>Night</h2>`;
-    const d = you.duties || [];
-    if (!canAct || !d.length) {
-      h += `<p class="hint">${d.length ? 'Your night\'s work is done.' : 'You have no duty tonight. Bar the door and listen.'}</p>${waitingLine()}`;
+    const opts = you.options || [];
+    const rites = you.rites || [];
+    if (!canAct) {
+      h += `<p class="hint">${you.exiled ? 'You watch from outside the town.' : 'Your night is decided. Bar the door and listen.'}</p>${waitingLine()}`;
     } else {
-      const slot = (key, label, hint) => `<div class="motion"><span>${label}</span><div class="row" style="justify-content:space-between">
-        <span>${draft[key] ? `<b>${plotName(draft[key].x, draft[key].y)}</b>` : `<span class="hint">${hint}</span>`}</span>
-        <button class="btn ${picking === key ? 'sel' : ''}" data-pick="${key}">${picking === key ? 'Tap the map…' : 'Choose on map'}</button></div></div>`;
-      if (d.includes('take')) h += slot('take', 'The Order takes a villager from a house', 'Optional. Choose a house.');
-      if (d.includes('consecrate')) h += slot('consecrate', 'Consecrate a building (only ritual sites count)', 'Optional. Choose a building.');
-      if (d.includes('frame')) h += `<div class="motion"><span>Or frame a councillor instead of consecrating. If the Priest reads them tonight, they look hollow.</span><div class="row">${S.players.filter(p => !p.exiled && p.id !== you.id).map(p =>
-        `<button class="btn ${draft.frame === p.id ? 'sel' : ''}" data-frame="${p.id}">${esc(p.name)}</button>`).join('')}</div></div>`;
-      if (d.includes('guard')) h += slot('guard', 'Stand guard over a house', 'Choose a house.');
-      if (d.includes('inspect')) h += slot('inspect', 'Inspect a building', 'Choose a building.');
-      if (d.includes('track')) h += `<div class="motion"><span>You will follow any tracks in the frost.</span></div>`;
-      if (d.includes('read')) h += `<div class="motion"><span>Read a councillor's soul</span><div class="row">${S.players.filter(p => !p.exiled && p.id !== you.id).map(p =>
-        `<button class="btn ${draft.read === p.id ? 'sel' : ''}" data-read="${p.id}">${esc(p.name)}</button>`).join('')}</div></div>`;
+      if (!draft.choice || !opts.includes(draft.choice)) draft.choice = opts[0];
+      const others = S.players.filter(p => !p.exiled && p.id !== you.id);
+      const targetPicker = (kind, key) => {
+        if (kind === 'none') return '';
+        if (kind === 'player') return `<div class="row">${others.map(p => `<button class="btn ${draft[key] === p.id ? 'sel' : ''}" data-who="${key}:${p.id}">${esc(p.name)}</button>`).join('')}</div>`;
+        const v = draft[key] && typeof draft[key] === 'object' ? draft[key] : null;
+        return `<div class="row" style="justify-content:space-between"><span>${v ? `<b>${plotName(v.x, v.y)}</b>` : `<span class="hint">Choose a ${kind} on the map.</span>`}</span>
+          <button class="btn ${picking === key ? 'sel' : ''}" data-pick="${key}">${picking === key ? 'Tap the map…' : 'Choose on map'}</button></div>`;
+      };
+      h += `<h3>What will you do tonight?</h3><div class="stack">${opts.map(k => {
+        const a = S.actions[k];
+        const on = draft.choice === k;
+        return `<div class="motion ${on ? 'sel' : ''}" style="${on ? 'border-color:var(--gold)' : ''}">
+          <button class="btn ${on ? 'sel' : ''}" data-choice="${k}" style="text-align:left">${esc(a.label)}</button>
+          <span class="hint">${a.out ? 'You leave home: others watching may see you go.' : 'You stay home.'}</span>
+          ${on ? targetPicker(a.target, 'target') : ''}</div>`;
+      }).join('')}</div>`;
+
+      if (you.cult) {
+        h += `<h3>The Order's work</h3><div class="stack">
+          <div class="motion"><span>Take a villager from a house (optional)</span>${targetPicker('house', 'take')}
+            ${draft.take ? '<button class="btn" data-clear="take">Take no one</button>' : ''}</div>
+          <div class="motion"><span>Perform one rite (optional)</span><div class="row">
+            ${rites.map(k => `<button class="btn ${draft.rite === k ? 'sel' : ''}" data-rite="${k}">${esc(S.riteInfo[k].label)}</button>`).join('')}
+            <button class="btn ${!draft.rite ? 'sel' : ''}" data-rite="">No rite</button></div>
+            ${draft.rite ? targetPicker(S.riteInfo[draft.rite].target, 'riteTarget') : ''}</div></div>`;
+      }
       h += `<p style="margin-top:12px"><button class="btn primary" id="actBtn">Go about your night</button></p>`;
     }
-    el.innerHTML = h.replace(/<\/div><div class="motion">/g, '</div><div style="height:8px"></div><div class="motion">');
+    h += `<h3>The council</h3>${seats(true)}`;
+    el.innerHTML = h;
+    el.querySelectorAll('[data-choice]').forEach(b => b.onclick = () => { draft.choice = b.dataset.choice; draft.target = null; picking = null; renderCouncil(); town.update(S); });
+    el.querySelectorAll('[data-who]').forEach(b => b.onclick = () => { const [k, id] = b.dataset.who.split(':'); draft[k] = id; renderCouncil(); });
     el.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => { picking = picking === b.dataset.pick ? null : b.dataset.pick; renderCouncil(); });
-    el.querySelectorAll('[data-read]').forEach(b => b.onclick = () => { draft.read = b.dataset.read; renderCouncil(); });
-    el.querySelectorAll('[data-frame]').forEach(b => b.onclick = () => { draft.frame = draft.frame === b.dataset.frame ? null : b.dataset.frame; renderCouncil(); });
-    if ($('actBtn')) $('actBtn').onclick = () => send({ t: 'act', action: { take: draft.take, consecrate: draft.frame ? null : draft.consecrate, frame: draft.frame, guard: draft.guard, inspect: draft.inspect, read: draft.read } });
+    el.querySelectorAll('[data-rite]').forEach(b => b.onclick = () => { draft.rite = b.dataset.rite || null; draft.riteTarget = null; if (picking === 'riteTarget') picking = null; renderCouncil(); town.update(S); });
+    el.querySelectorAll('[data-clear]').forEach(b => b.onclick = () => { draft[b.dataset.clear] = null; renderCouncil(); town.update(S); });
+    if ($('actBtn')) $('actBtn').onclick = () => {
+      const kind = S.actions[draft.choice].target;
+      if (kind !== 'none' && !draft.target) return toast(kind === 'player' ? 'Choose a councillor for tonight.' : `Choose a ${kind} on the map.`);
+      if (draft.rite && S.riteInfo[draft.rite].target !== 'none' && !draft.riteTarget) return toast('Choose a target for the rite, or pick No rite.');
+      send({ t: 'act', action: { choice: draft.choice, target: draft.target, take: draft.take, rite: draft.rite, riteTarget: draft.riteTarget } });
+    };
     wireBell();
   }
 }
@@ -313,7 +359,8 @@ function onPlotTap(x, y) {
   const vs = S.villagers.filter(v => !v.taken && v.x === x && v.y === y);
   const tag = $('plotTag');
   tag.hidden = false;
-  tag.innerHTML = `<b>${plotName(x, y)}</b> · ${c ? esc(c.type === 'hall' ? 'Town Hall' : S.buildings[c.type].name) : 'empty plot'}${vs.length && c?.type === 'house' ? `<br><span class="hint">${vs.map(v => esc(v.name)).join(', ')}</span>` : ''}`;
+  const gone = S.villagers.filter(v => v.taken && v.x === x && v.y === y);
+  tag.innerHTML = `<b>${plotName(x, y)}</b> · ${c ? esc(c.type === 'hall' ? 'Town Hall' : S.buildings[c.type].name) : 'empty plot'}${vs.length && c?.type === 'house' ? `<br><span class="hint">Lives here: ${vs.map(v => esc(v.name)).join(', ')}</span>` : ''}${gone.length ? `<br><span style="color:#e0a69c">Taken from here: ${gone.map(v => `${esc(v.name)} (night ${v.takenNight})`).join(', ')}</span>` : ''}`;
   if (S.you?.exiled) return;
   if (picking === 'claim') {
     if (!c || c.type === 'hall') return toast('Choose a building other than the town hall.');
@@ -325,8 +372,9 @@ function onPlotTap(x, y) {
     if (draft.motion === 'demolish' && (!c || c.type === 'hall')) return toast('Choose a building other than the town hall.');
     draft.plot = { x, y };
   } else if (S.phase === 'night' && picking) {
-    if ((picking === 'take' || picking === 'guard') && c?.type !== 'house') return toast('Choose a house.');
-    if ((picking === 'consecrate' || picking === 'inspect') && (!c || c.type === 'hall')) return toast('Choose a building.');
+    const kind = picking === 'take' ? 'house' : picking === 'target' ? S.actions[draft.choice].target : S.riteInfo[draft.rite]?.target;
+    if (kind === 'house' && c?.type !== 'house') return toast('Choose a house.');
+    if (kind === 'building' && (!c || c.type === 'hall')) return toast('Choose a building other than the town hall.');
     draft[picking] = { x, y };
     picking = null;
   } else return;
@@ -394,6 +442,7 @@ function makeTown() {
     thatch: flat(0x9a7a3c), slate: flat(0x4a4f57), wood: flat(0x6b4a2e), darkwood: flat(0x3f2c1c), white: flat(0xe6e0d0),
     red: new THREE.MeshBasicMaterial({ color: 0xa3302a, transparent: true, opacity: .55 }),
     sel: new THREE.MeshBasicMaterial({ color: 0xc9a24a, transparent: true, opacity: .6 }),
+    lost: new THREE.MeshBasicMaterial({ color: 0x5a0f0c, transparent: true, opacity: .85 }),
     glow: new THREE.MeshBasicMaterial({ color: 0xffb347 }), water: flat(0x2e4a5c), tree: flat(0x2f4a2a), trunk: flat(0x4a3423),
   };
   const box = (w, h, d, m, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y + h / 2, z); return o; };
@@ -487,7 +536,9 @@ function makeTown() {
     // marks: ritual sites for the cult, selections for everyone
     markLayer.clear();
     if (s && s.ritual) for (const [x, y] of s.ritual) ringMark(x, y, M.red);
-    if (s) for (const k of ['plot', 'take', 'consecrate', 'guard', 'inspect']) if (draft[k]) ringMark(draft[k].x, draft[k].y, M.sel, 0.9);
+    if (s) for (const k of ['plot', 'take', 'target', 'riteTarget']) if (draft[k] && typeof draft[k] === 'object') ringMark(draft[k].x, draft[k].y, M.sel, 0.9);
+    // Houses people have vanished from carry a dark mark for the rest of the game.
+    if (s) for (const v of s.villagers) if (v.taken) ringMark(v.x, v.y, M.lost, 1.08);
     if (s && draft.claim && draft.claim.plot) ringMark(draft.claim.plot.x, draft.claim.plot.y, M.sel, 0.75);
 
     // villagers
