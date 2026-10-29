@@ -1,12 +1,11 @@
 # Builds the Mac and Windows apps on GitHub's machines.
-# Publish a release on GitHub (or push a tag like v0.2.0) and the installers
-# are attached to that release. Running it by hand from the Actions tab
+# Publish a release on GitHub and the installers are attached to it.
+# The release tag should match "version" in package.json (v0.2.0 for 0.2.0).
+# Running it by hand from the Actions tab
 # builds them as downloadable artifacts without making a release.
 name: Build apps
 
 on:
-  push:
-    tags: ['v*']
   release:
     types: [published]
   workflow_dispatch:
@@ -37,7 +36,7 @@ jobs:
         run: node test/botgames.js 300
 
       - name: Build and publish
-        run: npx electron-builder --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }} ${{ github.event_name == 'release' && format('-c.extraMetadata.version={0}', github.event.release.tag_name) || '' }}
+        run: npx electron-builder --publish ${{ github.event_name == 'release' && 'always' || 'never' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

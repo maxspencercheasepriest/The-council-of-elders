@@ -110,14 +110,11 @@ Games live in memory, so restarting the server ends them. If someone drops out, 
 
 ## Building the apps
 
-Push a version tag and GitHub builds the Mac and Windows apps for you, then attaches them to a release:
+GitHub builds the Mac and Windows apps for you:
 
-```bash
-git tag v0.2.1
-git push origin v0.2.1
-```
-
-Remember to bump `version` in package.json to match. You can watch the build under the repo's **Actions** tab. To try the app locally from source, run `npm install` and then `npm run app`.
+1. Set `version` in package.json, for example `0.2.1`, and push.
+2. On the repo page, go to **Releases → Draft a new release**, create the tag `v0.2.1`, and click **Publish release**.
+3. About ten minutes later the .dmg and .exe files appear on that release. You can watch the build under the repo's **Actions** tab. To try the app locally from source, run `npm install` and then `npm run app`.
 
 ## Testing
 
