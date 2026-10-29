@@ -58,6 +58,47 @@ $('chatForm').onsubmit = e => { e.preventDefault(); const v = $('chatInput').val
 
 const PHASE_LABEL = { lobby: 'Gathering the council', propose: 'Day · table your motions', vote: 'Day · the council votes', night: 'Night falls over Ashworth', over: 'The matter is settled' };
 
+// ================= desktop app extras =================
+// Present only when running inside the Council of Elders app.
+const desk = window.councilApp || null;
+let deskInfo = null, tunnelMsg = null, tunnelBusy = false;
+if (desk) {
+  desk.info().then(i => { deskInfo = i; render(); });
+  desk.onTunnelStatus(t => { tunnelMsg = t; if (!t || /closed/.test(t)) desk.info().then(i => { deskInfo = i; render(); }); else render(); });
+}
+const isGuestInApp = () => desk && deskInfo && !deskInfo.isHost;
+
+function copyText(text) {
+  const done = () => toast('Link copied.');
+  const fail = () => toast('Copy it by hand: ' + text);
+  try { navigator.clipboard.writeText(text).then(done, fail); } catch { fail(); }
+}
+
+function invitePanel(code) {
+  if (!(desk && deskInfo && deskInfo.isHost)) {
+    return `<p class="hint">Share this link: <b style="color:var(--parch)">${esc(location.origin + '/' + code)}</b> <button class="btn" data-copy="${esc(location.origin + '/' + code)}">Copy</button></p>`;
+  }
+  const lan = deskInfo.lan.map(u => u + '/' + code);
+  const net = deskInfo.tunnelUrl ? deskInfo.tunnelUrl + '/' + code : null;
+  return `<h3>Invite friends</h3>
+    <p class="hint">On your Wi-Fi: ${lan.length ? lan.map(u => `<b style="color:var(--parch)">${esc(u)}</b> <button class="btn" data-copy="${esc(u)}">Copy</button>`).join('<br>') : 'no network found.'}</p>
+    <p class="hint">Anywhere on the internet: ${net
+      ? `<b style="color:var(--parch)">${esc(net)}</b> <button class="btn" data-copy="${esc(net)}">Copy</button> <button class="btn" id="tunnelStop">Close link</button><br>This free Cloudflare link lasts until you close it or quit the app.`
+      : `<button class="btn" id="tunnelStart" ${tunnelBusy ? 'disabled' : ''}>${tunnelBusy ? 'Working…' : 'Create an internet link'}</button>`}
+      ${tunnelMsg ? `<br>${esc(tunnelMsg)}` : ''}</p>
+    <p class="hint">Friends can open the link in any browser. They don't need the app.</p>`;
+}
+function wireInvite(el) {
+  el.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => copyText(b.dataset.copy));
+  if ($('tunnelStart')) $('tunnelStart').onclick = async () => {
+    tunnelBusy = true; tunnelMsg = null; render();
+    try { await desk.startTunnel(); deskInfo = await desk.info(); }
+    catch (e) { tunnelMsg = 'Could not open an internet link: ' + String(e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); }
+    tunnelBusy = false; render();
+  };
+  if ($('tunnelStop')) $('tunnelStop').onclick = async () => { await desk.stopTunnel(); deskInfo = await desk.info(); tunnelMsg = null; render(); };
+}
+
 function render() {
   if (!S) return renderEntry();
   const key = S.phase + S.day;
@@ -67,6 +108,8 @@ function render() {
   $('stats').innerHTML = S.phase === 'lobby'
     ? `<span>Code <b>${esc(S.code)}</b></span>`
     : `<span>Day <b>${S.day}</b>/${S.maxDays}</span><span>Timber <b>${S.wood}</b></span><span>Villagers <b>${alive}</b></span><span>Code <b>${esc(S.code)}</b></span>`;
+  if (isGuestInApp()) $('stats').insertAdjacentHTML('beforeend', '<button class="btn" id="homeTop" style="padding:2px 10px">My council</button>');
+  if ($('homeTop')) $('homeTop').onclick = () => desk.home();
   $('phaseBanner').textContent = PHASE_LABEL[S.phase] || '';
 
   renderCouncil();
@@ -88,11 +131,16 @@ function renderEntry() {
       ${urlCode ? `<button class="btn primary" id="joinBtn">Join council ${esc(urlCode)}</button>` : ''}
       <button class="btn ${urlCode ? '' : 'primary'}" id="createBtn">Convene a new council</button>
       <div class="row"><input type="text" id="codeIn" maxlength="4" placeholder="Code" style="width:110px;text-transform:uppercase"><button class="btn" id="joinCodeBtn">Join by code</button></div>
+      ${desk ? `<h3>Join a friend's game</h3>
+      <div class="row"><input type="text" id="linkIn" placeholder="Paste the link they sent you" style="flex:1;min-width:0"><button class="btn" id="linkBtn">Go</button></div>` : ''}
+      ${isGuestInApp() ? `<button class="btn" id="homeBtn">Back to my own council</button>` : ''}
     </div>`;
   const name = () => { const n = $('nameIn').value.trim(); if (!n) { toast('Enter your name first.'); return null; } store.set('council.name', n); session = { name: n }; return n; };
   $('createBtn').onclick = () => { const n = name(); if (n) send({ t: 'create', name: n }); };
   $('joinCodeBtn').onclick = () => { const n = name(); if (n) send({ t: 'join', name: n, code: $('codeIn').value.trim().toUpperCase() }); };
   if ($('joinBtn')) $('joinBtn').onclick = () => { const n = name(); if (n) send({ t: 'join', name: n, code: urlCode }); };
+  if ($('linkBtn')) $('linkBtn').onclick = () => { const n = $('nameIn').value.trim(); if (n) store.set('council.name', n); desk.open($('linkIn').value).catch(e => toast(String(e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))); };
+  if ($('homeBtn')) $('homeBtn').onclick = () => desk.home();
   town.update(null);
 }
 
@@ -147,7 +195,7 @@ function renderCouncil() {
   if (you && you.exiled && S.phase !== 'over') h += `<p class="hint">You have been exiled. You may still watch and talk.</p>`;
 
   if (S.phase === 'lobby') {
-    h += `<h2>Gathering the council</h2><p class="hint">Share this link: <b style="color:var(--parch)">${esc(location.origin + '/' + S.code)}</b> <button class="btn" id="copyBtn">Copy</button></p>
+    h += `<h2>Gathering the council</h2>${invitePanel(S.code)}
       <h3>Seats (${S.players.length}/6)</h3>${seats(false)}`;
     h += S.hostId === you.id
       ? `<div class="row" style="margin-top:14px"><button class="btn" id="botBtn" ${S.players.length >= 6 ? 'disabled' : ''}>Add a bot</button>
@@ -158,7 +206,7 @@ function renderCouncil() {
     if ($('startBtn')) $('startBtn').onclick = () => send({ t: 'start' });
     if ($('botBtn')) $('botBtn').onclick = () => send({ t: 'addBot' });
     el.querySelectorAll('[data-unseat]').forEach(b => b.onclick = () => send({ t: 'removeBot', id: b.dataset.unseat }));
-    $('copyBtn').onclick = () => navigator.clipboard?.writeText(location.origin + '/' + S.code).then(() => toast('Link copied.'), () => toast('Copy it by hand: ' + location.origin + '/' + S.code));
+    wireInvite(el);
     return;
   }
 
@@ -302,7 +350,29 @@ function renderChat() {
 }
 
 // ================= the town in three.js =================
-const town = (() => {
+// If 3D isn't available (old graphics driver, WebGL switched off), the game still plays without the map view.
+const town = (() => { try { return makeTown(); } catch (err) {
+  console.error(err);
+  $('town').hidden = true;
+  $('townWrap').insertAdjacentHTML('beforeend', `<form id="plotForm" class="stack" style="padding:16px max(16px, env(safe-area-inset-left));max-width:420px">
+    <p class="hint">The 3D town could not start on this device, but you can still play. Type a plot name, from A1 to H8, wherever you would tap the map.</p>
+    <div class="row"><input type="text" id="plotIn" maxlength="2" placeholder="C4" style="width:90px;text-transform:uppercase"><button class="btn">Choose plot</button></div>
+    <p class="hint" id="plotList"></p></form>`);
+  $('plotForm').onsubmit = e => {
+    e.preventDefault();
+    const m = /^([A-H])([1-8])$/i.exec($('plotIn').value.trim());
+    if (!m) return toast('Plots run from A1 to H8.');
+    onPlotTap('ABCDEFGH'.indexOf(m[1].toUpperCase()), Number(m[2]) - 1);
+  };
+  return { update(s) {
+    if (!s || !s.grid) { $('plotList').textContent = ''; return; }
+    const out = [];
+    s.grid.forEach((col, x) => col.forEach((c, y) => { if (c) out.push(`${plotName(x, y)} ${c.type === 'hall' ? 'Town Hall' : s.buildings[c.type].name}${c.consecrated ? ' (consecrated)' : ''}`); }));
+    $('plotList').textContent = 'Buildings: ' + out.join(', ') + (s.ritual ? '. Your ritual sites: ' + s.ritual.map(([x, y]) => plotName(x, y)).join(', ') : '');
+  } };
+} })();
+
+function makeTown() {
   const canvas = $('town');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
@@ -520,7 +590,7 @@ const town = (() => {
   })();
 
   return { update };
-})();
+}
 
 render();
 connect();

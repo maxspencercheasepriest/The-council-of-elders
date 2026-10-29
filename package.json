@@ -1,17 +1,81 @@
 {
   "name": "the-council-of-elders",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A multiplayer hidden-traitor town builder. One councillor secretly leads a cult.",
-  "main": "server.js",
+  "main": "electron/main.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test/simulate.js 100"
+    "app": "electron .",
+    "dist": "electron-builder",
+    "test": "node test/simulate.js 100 && node test/botgames.js 500"
   },
   "license": "MIT",
   "dependencies": {
+    "cloudflared": "^0.7.3",
     "ws": "^8.22.0"
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "electron": "^44.7.1",
+    "electron-builder": "^26.17.0"
+  },
+  "author": "Flick",
+  "homepage": "https://github.com/maxspencercheasepriest/the-council-of-elders",
+  "build": {
+    "appId": "com.flick.councilofelders",
+    "productName": "Council of Elders",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "server.js",
+      "game.js",
+      "bots.js",
+      "public/**",
+      "electron/**",
+      "package.json",
+      "!**/node_modules/cloudflared/bin/**"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.board-games",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "artifactName": "Council-of-Elders-${version}-mac-${arch}.${ext}"
+    },
+    "dmg": {
+      "title": "Council of Elders"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Council-of-Elders-${version}-windows-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Council of Elders"
+    },
+    "publish": {
+      "provider": "github",
+      "releaseType": "release"
+    }
   }
 }

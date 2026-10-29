@@ -8,12 +8,12 @@ const { WebSocketServer } = require('ws');
 const { Game } = require('./game');
 const bots = require('./bots');
 
-const PORT = process.env.PORT || 3000;
 const PUBLIC = path.join(__dirname, 'public');
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' };
 
 const server = http.createServer((req, res) => {
-  const url = decodeURIComponent(req.url.split('?')[0]);
+  let url;
+  try { url = decodeURIComponent(req.url.split('?')[0]); } catch { res.writeHead(400); return res.end(); }
   let file = path.normalize(path.join(PUBLIC, url === '/' ? 'index.html' : url));
   if (!file.startsWith(PUBLIC)) { res.writeHead(403); return res.end(); }
   fs.readFile(file, (err, data) => {
@@ -113,4 +113,38 @@ setInterval(() => {
   }
 }, 30000);
 
-server.listen(PORT, () => console.log(`The Council of Elders is in session on http://localhost:${PORT}`));
+// Start listening. Tries the given port, then the next few if it's busy. Resolves with the port in use.
+function start(port = 3000, tries = 10) {
+  return new Promise((resolve, reject) => {
+    const attempt = (p, left) => {
+      const onError = err => {
+        server.off('listening', onListen);
+        if (err.code === 'EADDRINUSE' && left > 0) attempt(p + 1, left - 1);
+        else reject(err);
+      };
+      const onListen = () => { server.off('error', onError); resolve(server.address().port); };
+      server.once('error', onError);
+      server.once('listening', onListen);
+      server.listen(p);
+    };
+    attempt(Number(port), tries);
+  });
+}
+
+module.exports = { start };
+
+if (require.main === module) {
+  start(process.env.PORT || 3000, process.env.PORT ? 0 : 10).then(port => {
+    console.log(`The Council of Elders is in session on http://localhost:${port}`);
+    for (const ip of lanAddresses()) console.log(`Friends on your network can join at http://${ip}:${port}`);
+  }, err => { console.error(err.message); process.exit(1); });
+}
+
+function lanAddresses() {
+  const out = [];
+  for (const list of Object.values(require('os').networkInterfaces())) {
+    for (const a of list || []) if (a.family === 'IPv4' && !a.internal) out.push(a.address);
+  }
+  return out;
+}
+module.exports.lanAddresses = lanAddresses;

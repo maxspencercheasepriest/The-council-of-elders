@@ -1,0 +1,47 @@
+# Builds the Mac and Windows apps on GitHub's machines.
+# Push a tag like v0.2.0 and the installers appear on the repo's Releases page.
+name: Build apps
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Skip install scripts: electron-builder fetches Electron itself,
+      # and the app downloads cloudflared on first use.
+      - run: npm ci --ignore-scripts
+
+      - name: Check the rules still hold up
+        run: node test/botgames.js 300
+
+      - name: Build and publish
+        run: npx electron-builder --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Keep a copy with this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: council-of-elders-${{ matrix.os }}
+          path: |
+            dist/*.dmg
+            dist/*.exe
+          if-no-files-found: error

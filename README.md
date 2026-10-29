@@ -62,7 +62,29 @@ Bots can't read free chat, so use statements to tell them things.
 
 The town earns 2 timber each dawn plus whatever its workshops and mills produce. Any building on a ritual plot counts toward the rite, so watch who keeps proposing cheap wells in odd places.
 
-## Running it
+## Getting the app
+
+Download the latest version from the [Releases page](https://github.com/maxspencercheasepriest/the-council-of-elders/releases):
+
+- **Mac with Apple Silicon (M1 and later):** `Council-of-Elders-…-mac-arm64.dmg`
+- **Older Intel Mac:** `Council-of-Elders-…-mac-x64.dmg`
+- **Windows:** `Council-of-Elders-…-windows-setup.exe`
+
+The apps aren't signed with a paid developer certificate, so the first launch needs one extra step:
+
+- **Mac:** open the .dmg and drag the app to Applications. The first time you open it, macOS will say it can't verify the developer. Go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. If macOS instead says the app is damaged, open Terminal and run `xattr -cr "/Applications/Council of Elders.app"`, then open it again.
+- **Windows:** if SmartScreen warns you, click **More info**, then **Run anyway**.
+
+### Hosting from the app
+
+Open the app, convene a council, and the lobby shows two ways to invite people:
+
+- **On your Wi-Fi:** a local address for people in the same house.
+- **Anywhere on the internet:** click **Create an internet link**. The app opens a free, temporary Cloudflare tunnel and gives you an address like `https://some-words.trycloudflare.com/ABCD`. The first time, it downloads Cloudflare's small tunnel tool. The link works until you close it or quit the app, and you get a new address each time.
+
+Friends just open the link in any browser, on a phone or computer. They don't need the app. If they do have it, they can paste your link into **Join a friend's game**.
+
+## Running from source
 
 Needs Node.js 18 or newer.
 
@@ -86,6 +108,17 @@ Games live in memory, so restarting the server ends them. If someone drops out, 
 - Tap a plot to see what's there and who lives in it.
 - When a motion or night duty needs a plot, tap it on the map.
 
+## Building the apps
+
+Push a version tag and GitHub builds the Mac and Windows apps for you, then attaches them to a release:
+
+```bash
+git tag v0.2.1
+git push origin v0.2.1
+```
+
+Remember to bump `version` in package.json to match. You can watch the build under the repo's **Actions** tab. To try the app locally from source, run `npm install` and then `npm run app`.
+
 ## Testing
 
 ```bash
@@ -103,6 +136,8 @@ Plays games where every seat is a bot and reports how often the council wins at 
 ## Project layout
 
 ```
+electron/         desktop app: window, Wi-Fi and internet invites
+build/icon.png    app icon
 server.js         web server and websocket rooms
 game.js           all the rules: roles, motions, votes, night, endings
 bots.js           bot councillors
