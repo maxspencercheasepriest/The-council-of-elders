@@ -98,7 +98,7 @@ function renderEntry() {
 
 function seats(showDone) {
   return S.players.map(p => `<div class="seat ${p.exiled ? 'exiled' : ''}">
-    <span>${esc(p.name)}${p.id === S.you.id ? ' (you)' : ''}${p.id === S.hostId ? ' · host' : ''}${p.connected ? '' : ' · away'}${p.cult ? ' <span class="cultTag">· CULT LEADER</span>' : ''}</span>
+    <span>${esc(p.name)}${p.bot ? ' · bot' : ''}${p.id === S.you.id ? ' (you)' : ''}${p.id === S.hostId ? ' · host' : ''}${p.connected ? '' : ' · away'}${p.bot && S.phase === 'lobby' && S.hostId === S.you.id ? ` <button class="btn" style="padding:2px 8px" data-unseat="${p.id}" aria-label="Remove ${esc(p.name)}">Remove</button>` : ''}${p.cult ? ' <span class="cultTag">· CULT LEADER</span>' : ''}</span>
     <span class="role">${esc(p.role || '')} ${showDone && !p.exiled ? (p.done ? '<span class="tick">✓ done</span>' : '…') : ''}</span></div>`).join('');
 }
 
@@ -109,6 +109,32 @@ function waitingLine() {
 }
 function wireBell() { if ($('bellBtn')) $('bellBtn').onclick = () => send({ t: 'force' }); }
 
+// Formal statements: bots weigh these. They can be lies.
+const CLAIMS = { cult: 'is the cult', honest: 'is honest', consecrated: 'is consecrated', clean: 'is clean' };
+function claimPanel() {
+  if (S.you.exiled || S.claimedToday) return S.claimedToday ? '<h3>Statement</h3><p class="hint">You have made your statement today.</p>' : '';
+  const c = draft.claim || (draft.claim = { kind: 'cult' });
+  const aboutPlayer = c.kind === 'cult' || c.kind === 'honest';
+  return `<h3>Make a statement</h3><p class="hint">Bots listen to these and weigh them. Nobody can check whether you are telling the truth.</p>
+    <div class="row">${Object.entries(CLAIMS).map(([k, v]) => `<button class="btn ${c.kind === k ? 'sel' : ''}" data-ckind="${k}">${k === 'cult' || k === 'honest' ? 'Someone ' : 'A building '}${v}</button>`).join('')}</div>
+    <div class="row" style="margin-top:8px">${aboutPlayer
+      ? S.players.filter(p => !p.exiled && p.id !== S.you.id).map(p => `<button class="btn ${c.id === p.id ? 'sel' : ''}" data-cwho="${p.id}">${esc(p.name)}</button>`).join('')
+      : `<span>${c.plot ? `<b>${plotName(c.plot.x, c.plot.y)}</b>` : '<span class="hint">No building chosen.</span>'}</span> <button class="btn ${picking === 'claim' ? 'sel' : ''}" data-cpick>${picking === 'claim' ? 'Tap the map…' : 'Choose on map'}</button>`}</div>
+    <p style="margin-top:8px"><button class="btn" id="claimBtn">Announce to the council</button></p>`;
+}
+function wireClaim(el) {
+  el.querySelectorAll('[data-ckind]').forEach(b => b.onclick = () => { draft.claim = { kind: b.dataset.ckind }; if (picking === 'claim') picking = null; renderCouncil(); });
+  el.querySelectorAll('[data-cwho]').forEach(b => b.onclick = () => { draft.claim.id = b.dataset.cwho; renderCouncil(); });
+  el.querySelectorAll('[data-cpick]').forEach(b => b.onclick = () => { picking = picking === 'claim' ? (S.phase === 'propose' ? 'plot' : null) : 'claim'; renderCouncil(); });
+  if ($('claimBtn')) $('claimBtn').onclick = () => {
+    const c = draft.claim;
+    if ((c.kind === 'cult' || c.kind === 'honest') && !c.id) return toast('Choose who you are talking about.');
+    if ((c.kind === 'consecrated' || c.kind === 'clean') && !c.plot) return toast('Choose a building on the map.');
+    send({ t: 'claim', fact: { kind: c.kind, id: c.id, x: c.plot?.x, y: c.plot?.y } });
+    draft.claim = { kind: 'cult' };
+  };
+}
+
 function renderCouncil() {
   const el = $('council');
   const you = S.you;
@@ -116,7 +142,7 @@ function renderCouncil() {
 
   if (you && you.role && S.phase !== 'over') {
     h += `<p class="hint">You are the <b style="color:var(--parch)">${esc(you.role)}</b>${you.cult ? ' and secretly <span class="cultTag">leader of the Hollow Order</span>' : ''}. ${esc(S.roleInfo[you.role])}</p>`;
-    if (you.cult) h += `<p class="hint">Ritual sites (marked red on the map): ${S.ritual.map(([x, y]) => plotName(x, y)).join(', ')}. Consecrated ${S.ritualProgress}/4.</p>`;
+    if (you.cult) h += `<p class="hint">Ritual sites (marked red on the map): ${S.ritual.map(([x, y]) => plotName(x, y)).join(', ')}. Consecrated ${S.ritualProgress}/${S.ritualSites}.</p>`;
   }
   if (you && you.exiled && S.phase !== 'over') h += `<p class="hint">You have been exiled. You may still watch and talk.</p>`;
 
@@ -124,10 +150,14 @@ function renderCouncil() {
     h += `<h2>Gathering the council</h2><p class="hint">Share this link: <b style="color:var(--parch)">${esc(location.origin + '/' + S.code)}</b> <button class="btn" id="copyBtn">Copy</button></p>
       <h3>Seats (${S.players.length}/6)</h3>${seats(false)}`;
     h += S.hostId === you.id
-      ? `<p style="margin-top:14px"><button class="btn primary" id="startBtn" ${S.players.length < 3 ? 'disabled' : ''}>Open the session</button> ${S.players.length < 3 ? '<span class="hint">Needs 3 or more.</span>' : ''}</p>`
+      ? `<div class="row" style="margin-top:14px"><button class="btn" id="botBtn" ${S.players.length >= 6 ? 'disabled' : ''}>Add a bot</button>
+         <button class="btn primary" id="startBtn" ${S.players.length < 3 ? 'disabled' : ''}>Open the session</button> ${S.players.length < 3 ? '<span class="hint">Needs 3 or more. Bots count.</span>' : ''}</div>
+         <p class="hint" style="margin-top:8px">Bots act on their own clues, share findings at dawn and vote on the evidence. Any of them could be the cult.</p>`
       : `<p class="hint" style="margin-top:14px">The host will open the session.</p>`;
     el.innerHTML = h;
     if ($('startBtn')) $('startBtn').onclick = () => send({ t: 'start' });
+    if ($('botBtn')) $('botBtn').onclick = () => send({ t: 'addBot' });
+    el.querySelectorAll('[data-unseat]').forEach(b => b.onclick = () => send({ t: 'removeBot', id: b.dataset.unseat }));
     $('copyBtn').onclick = () => navigator.clipboard?.writeText(location.origin + '/' + S.code).then(() => toast('Link copied.'), () => toast('Copy it by hand: ' + location.origin + '/' + S.code));
     return;
   }
@@ -165,8 +195,9 @@ function renderCouncil() {
       }
       h += `<p style="margin-top:12px"><button class="btn primary" id="tableBtn">Table this motion</button></p>`;
     }
-    h += `<h3>The council</h3>${seats(true)}`;
+    h += claimPanel() + `<h3>The council</h3>${seats(true)}`;
     el.innerHTML = h;
+    wireClaim(el);
     el.querySelectorAll('[data-motion]').forEach(b => b.onclick = () => { draft.motion = b.dataset.motion; draft.plot = null; picking = draft.motion === 'exile' ? null : 'plot'; renderCouncil(); town.update(S); });
     el.querySelectorAll('[data-type]').forEach(b => b.onclick = () => { draft.type = b.dataset.type; renderCouncil(); town.update(S); });
     el.querySelectorAll('[data-target]').forEach(b => b.onclick = () => { draft.target = b.dataset.target; renderCouncil(); });
@@ -189,8 +220,9 @@ function renderCouncil() {
     h += canAct
       ? `<p style="margin-top:12px"><button class="btn primary" id="castBtn">Cast your ballot</button> <span class="hint">Unmarked motions count as Nay.</span></p>`
       : `<p class="hint" style="margin-top:12px">Ballot cast.</p>${waitingLine()}`;
-    h += `<h3>The council</h3>${seats(true)}`;
+    h += claimPanel() + `<h3>The council</h3>${seats(true)}`;
     el.innerHTML = h;
+    wireClaim(el);
     el.querySelectorAll('[data-aye]').forEach(b => b.onclick = () => { draft.ballots[b.dataset.aye] = true; renderCouncil(); });
     el.querySelectorAll('[data-nay]').forEach(b => b.onclick = () => { draft.ballots[b.dataset.nay] = false; renderCouncil(); });
     if ($('castBtn')) $('castBtn').onclick = () => send({ t: 'vote', ballots: draft.ballots });
@@ -209,6 +241,8 @@ function renderCouncil() {
         <button class="btn ${picking === key ? 'sel' : ''}" data-pick="${key}">${picking === key ? 'Tap the map…' : 'Choose on map'}</button></div></div>`;
       if (d.includes('take')) h += slot('take', 'The Order takes a villager from a house', 'Optional. Choose a house.');
       if (d.includes('consecrate')) h += slot('consecrate', 'Consecrate a building (only ritual sites count)', 'Optional. Choose a building.');
+      if (d.includes('frame')) h += `<div class="motion"><span>Or frame a councillor instead of consecrating. If the Priest reads them tonight, they look hollow.</span><div class="row">${S.players.filter(p => !p.exiled && p.id !== you.id).map(p =>
+        `<button class="btn ${draft.frame === p.id ? 'sel' : ''}" data-frame="${p.id}">${esc(p.name)}</button>`).join('')}</div></div>`;
       if (d.includes('guard')) h += slot('guard', 'Stand guard over a house', 'Choose a house.');
       if (d.includes('inspect')) h += slot('inspect', 'Inspect a building', 'Choose a building.');
       if (d.includes('track')) h += `<div class="motion"><span>You will follow any tracks in the frost.</span></div>`;
@@ -219,7 +253,8 @@ function renderCouncil() {
     el.innerHTML = h.replace(/<\/div><div class="motion">/g, '</div><div style="height:8px"></div><div class="motion">');
     el.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => { picking = picking === b.dataset.pick ? null : b.dataset.pick; renderCouncil(); });
     el.querySelectorAll('[data-read]').forEach(b => b.onclick = () => { draft.read = b.dataset.read; renderCouncil(); });
-    if ($('actBtn')) $('actBtn').onclick = () => send({ t: 'act', action: { take: draft.take, consecrate: draft.consecrate, guard: draft.guard, inspect: draft.inspect, read: draft.read } });
+    el.querySelectorAll('[data-frame]').forEach(b => b.onclick = () => { draft.frame = draft.frame === b.dataset.frame ? null : b.dataset.frame; renderCouncil(); });
+    if ($('actBtn')) $('actBtn').onclick = () => send({ t: 'act', action: { take: draft.take, consecrate: draft.frame ? null : draft.consecrate, frame: draft.frame, guard: draft.guard, inspect: draft.inspect, read: draft.read } });
     wireBell();
   }
 }
@@ -231,8 +266,13 @@ function onPlotTap(x, y) {
   const tag = $('plotTag');
   tag.hidden = false;
   tag.innerHTML = `<b>${plotName(x, y)}</b> · ${c ? esc(c.type === 'hall' ? 'Town Hall' : S.buildings[c.type].name) : 'empty plot'}${vs.length && c?.type === 'house' ? `<br><span class="hint">${vs.map(v => esc(v.name)).join(', ')}</span>` : ''}`;
-  if (S.submitted || S.you?.exiled) return;
-  if (S.phase === 'propose' && picking === 'plot') {
+  if (S.you?.exiled) return;
+  if (picking === 'claim') {
+    if (!c || c.type === 'hall') return toast('Choose a building other than the town hall.');
+    draft.claim.plot = { x, y };
+    picking = S.phase === 'propose' ? 'plot' : null;
+  } else if (S.submitted) return;
+  else if (S.phase === 'propose' && picking === 'plot') {
     if (draft.motion === 'build' && c) return toast('That plot is already built on.');
     if (draft.motion === 'demolish' && (!c || c.type === 'hall')) return toast('Choose a building other than the town hall.');
     draft.plot = { x, y };
@@ -370,7 +410,7 @@ const town = (() => {
         const b = makeBuilding(c.type);
         b.position.set(W(x), 0.06, W(y));
         b.rotation.y = ((x * 7 + y * 3) % 4) * Math.PI / 2 * (c.type === 'hall' ? 0 : 1);
-        if (c.consecrated) b.add(Object.assign(new THREE.PointLight(0xff2a1a, 1.2, 1.4), { position: new THREE.Vector3(0, 0.3, 0) }));
+        if (c.consecrated) { const l = new THREE.PointLight(0xff2a1a, 1.2, 1.4); l.position.set(0, 0.3, 0); b.add(l); }
         buildingLayer.add(b);
       }
     }
@@ -378,6 +418,7 @@ const town = (() => {
     markLayer.clear();
     if (s && s.ritual) for (const [x, y] of s.ritual) ringMark(x, y, M.red);
     if (s) for (const k of ['plot', 'take', 'consecrate', 'guard', 'inspect']) if (draft[k]) ringMark(draft[k].x, draft[k].y, M.sel, 0.9);
+    if (s && draft.claim && draft.claim.plot) ringMark(draft.claim.plot.x, draft.claim.plot.y, M.sel, 0.75);
 
     // villagers
     const vs = s ? s.villagers : [];

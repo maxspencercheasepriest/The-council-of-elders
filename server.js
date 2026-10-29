@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 const { Game } = require('./game');
+const bots = require('./bots');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC = path.join(__dirname, 'public');
@@ -40,6 +41,12 @@ function broadcast(game) {
   }
 }
 
+// Every change goes out to the players, then any bots get their turn.
+function changed(game) {
+  broadcast(game);
+  bots.schedule(game, changed);
+}
+
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', ws => {
@@ -68,16 +75,19 @@ wss.on('connection', ws => {
           return;
         }
         case 'start': game.start(s.playerId); break;
+        case 'addBot': game.addBot(s.playerId); break;
+        case 'removeBot': game.removeBot(s.playerId, msg.id); break;
         case 'propose': game.propose(s.playerId, msg.prop); break;
         case 'vote': game.vote(s.playerId, msg.ballots); break;
         case 'act': game.act(s.playerId, msg.action); break;
         case 'force': game.force(s.playerId); break;
         case 'chat': game.addChat(s.playerId, msg.text); break;
+        case 'claim': game.humanClaim(s.playerId, msg.fact); break;
         default: return;
       }
-      broadcast(game);
+      changed(game);
     } catch (e) {
-      if (!(e.message || '').match(/^[A-Z][a-z]/) || /Cannot read/.test(e.message)) console.error(e.stack);
+      if (!(e instanceof Error) || e instanceof TypeError || e instanceof ReferenceError) console.error(e && e.stack);
       ws.send(JSON.stringify({ t: 'error', message: e.message || 'Something went wrong.' }));
     }
   });

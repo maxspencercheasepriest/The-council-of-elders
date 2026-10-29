@@ -12,8 +12,8 @@ const ROLE_ORDER = ['Mayor', 'Constable', 'Priest', 'Huntsman', 'Guildmaster', '
 const ROLE_INFO = {
   Mayor: 'Breaks tied votes. On odd nights the ledger names one councillor you can trust.',
   Constable: 'Each night, guard one house. A Watchtower lets you glimpse who you drove off.',
-  Priest: 'Read one councillor\'s soul. Every second night, or every night with a Chapel.',
-  Huntsman: 'Needs a Lodge. Each night you learn where fresh tracks led.',
+  Priest: 'Read one councillor\'s soul. Every second night, or every night with a Chapel. The cult can frame people, so a hollow reading may be a lie.',
+  Huntsman: 'Needs a Lodge. When the cult consecrates a building, you learn which row or column the tracks ran along.',
   Guildmaster: 'Each night, inspect one building to see if it has been tampered with.',
   Alderman: 'No night duty. Your vote and your voice are your weapons.',
 };
@@ -27,6 +27,8 @@ const BUILDINGS = {
   well:       { name: 'Well',       cost: 1, desc: 'Cheap. Pleasant. Popular.' },
   mill:       { name: 'Mill',       cost: 2, desc: '+1 timber every dawn.' },
 };
+
+const BOT_NAMES = ['Old Wendell', 'Morwenna', 'Bartholomew', 'Goodwife Ivy', 'Septimus', 'Griselda'];
 
 const FIRST = ['Ada','Ezra','Martha','Silas','Hester','Jonah','Prudence','Amos','Tabitha','Gideon','Agnes','Caleb','Mercy','Obadiah','Lydia','Josiah','Bridget','Elias','Constance','Abel','Winifred','Thaddeus','Edith','Jasper','Rosamund','Ambrose','Dorcas','Felix','Hannah','Rufus','Olive','Barnaby','Temperance','Cyrus','Maud','Hollis'];
 const LAST = ['Thorne','Ashby','Crane','Holloway','Marsh','Pell','Wick','Graves','Hale','Fenn','Blackwood','Moss','Harrow','Lowe','Reed','Vane','Cobb','Rook','Sexton','Tull'];
@@ -72,17 +74,37 @@ class Game {
     if (!p) return;
     if (this.phase === 'lobby') {
       this.players = this.players.filter(q => q.id !== id);
-      if (this.hostId === id) this.hostId = this.players[0] ? this.players[0].id : null;
+      if (this.hostId === id) { const h = this.players.find(q => !q.bot); this.hostId = h ? h.id : null; }
     } else {
       p.connected = false;
     }
     this.bump();
   }
 
+  addBot(byId) {
+    if (byId !== this.hostId) throw new Error('Only the host can seat a bot.');
+    if (this.phase !== 'lobby') throw new Error('The session has already begun.');
+    if (this.players.length >= MAX_PLAYERS) throw new Error('The council is full (6 seats).');
+    const taken = new Set(this.players.map(p => p.name));
+    const name = BOT_NAMES.find(n => !taken.has(n)) || 'Elder ' + this.players.length;
+    const p = { id: uid(), token: null, name, role: null, cult: false, exiled: false, connected: true, bot: true };
+    this.players.push(p);
+    this.private[p.id] = [];
+    this.bump();
+    return p;
+  }
+
+  removeBot(byId, botId) {
+    if (byId !== this.hostId) throw new Error('Only the host can unseat a bot.');
+    if (this.phase !== 'lobby') throw new Error('The session has already begun.');
+    this.players = this.players.filter(p => !(p.id === botId && p.bot));
+    this.bump();
+  }
+
   start(byId) {
     if (byId !== this.hostId) throw new Error('Only the host can open the session.');
     if (this.phase !== 'lobby') throw new Error('Already started.');
-    if (this.players.length < MIN_PLAYERS) throw new Error(`Need at least ${MIN_PLAYERS} councillors.`);
+    if (this.players.length < MIN_PLAYERS) throw new Error(`Need at least ${MIN_PLAYERS} councillors. Add bots to fill seats.`);
     const roles = ROLE_ORDER.slice(0, this.players.length);
     shuffle(this.players).forEach((p, i) => { p.role = roles[i]; });
     pick(this.players).cult = true;
@@ -97,10 +119,11 @@ class Game {
 
     const free = [];
     for (let x = 0; x < SIZE; x++) for (let y = 0; y < SIZE; y++) if (!this.grid[x][y]) free.push([x, y]);
-    this.ritual = shuffle(free).slice(0, RITUAL_SITES);
+    this.sites = this.players.length >= 5 ? RITUAL_SITES - 1 : RITUAL_SITES;
+    this.ritual = shuffle(free).slice(0, this.sites);
 
     const cult = this.players.find(p => p.cult);
-    this.tell(cult.id, `You lead the Hollow Order. Get buildings onto ${this.ritual.map(([x, y]) => plotName(x, y)).join(', ')} and consecrate each one at night. Any building counts.`);
+    this.tell(cult.id, `You lead the Hollow Order. Get buildings onto ${this.ritual.map(([x, y]) => plotName(x, y)).join(', ')} and consecrate each one at night. Any building counts. Instead of consecrating, you can frame a councillor: if the Priest reads them that night, they look hollow.`);
     for (const p of this.players) this.tell(p.id, `You are the ${p.role}. ${ROLE_INFO[p.role]}`);
 
     this.day = 1;
@@ -113,7 +136,10 @@ class Game {
   alive() { return this.players.filter(p => !p.exiled); }
   byRole(role) { return this.players.find(p => p.role === role && !p.exiled); }
   say(text, kind = 'info') { this.log.push({ day: this.day, text, kind }); }
-  tell(id, text) { (this.private[id] = this.private[id] || []).push({ day: this.day, text }); }
+  tell(id, text, fact) {
+    (this.private[id] = this.private[id] || []).push({ day: this.day, text });
+    if (fact) { const p = this.player(id); (p.facts = p.facts || []).push({ day: this.day, ...fact }); }
+  }
   bump() { this.version++; }
   count(type) { let n = 0; for (const col of this.grid) for (const c of col) if (c && c.type === type) n++; return n; }
   livingVillagers() { return this.villagers.filter(v => !v.taken); }
@@ -126,8 +152,8 @@ class Game {
     return 'Villager ' + this.villagers.length;
   }
 
-  placeBuilding(type, x, y) {
-    this.grid[x][y] = { type, consecrated: false };
+  placeBuilding(type, x, y, by = null) {
+    this.grid[x][y] = { type, consecrated: false, by, day: this.day };
     if (type === 'house') for (let i = 0; i < 3; i++) this.villagers.push({ id: uid(), name: this.newVillagerName(), x, y, taken: false });
   }
 
@@ -220,7 +246,7 @@ class Game {
         if (this.grid[m.x][m.y]) { this.say(`PASSED but void: ${plotName(m.x, m.y)} was already built on.`, 'vote'); continue; }
         if (this.wood < b.cost) { this.say(`PASSED but unfunded: ${this.describe(m)}. The town has ${this.wood} timber, needs ${b.cost}. ${tally}`, 'vote'); continue; }
         this.wood -= b.cost;
-        this.placeBuilding(m.type, m.x, m.y);
+        this.placeBuilding(m.type, m.x, m.y, m.by);
         this.say(`PASSED${tie}: ${this.describe(m)}. ${tally}`, 'vote');
       } else if (m.kind === 'demolish') {
         const c = this.grid[m.x][m.y];
@@ -248,7 +274,7 @@ class Game {
   nightDuties(p) {
     if (p.exiled) return [];
     const d = [];
-    if (p.cult) d.push('take', 'consecrate');
+    if (p.cult) d.push('take', 'consecrate', 'frame');
     if (p.role === 'Constable') d.push('guard');
     if (p.role === 'Priest' && (this.count('chapel') > 0 || this.day % 2 === 1)) d.push('read');
     if (p.role === 'Huntsman' && this.count('lodge') > 0) d.push('track');
@@ -275,7 +301,8 @@ class Game {
     a = a || {};
     const plot = v => (v && Number.isInteger(v.x) && Number.isInteger(v.y) && v.x >= 0 && v.y >= 0 && v.x < SIZE && v.y < SIZE) ? { x: v.x, y: v.y } : null;
     if (duties.includes('take')) n.take = plot(a.take);
-    if (duties.includes('consecrate')) n.consecrate = plot(a.consecrate);
+    if (duties.includes('frame') && this.player(a.frame) && a.frame !== id && !this.player(a.frame).exiled) n.frame = a.frame;
+    if (duties.includes('consecrate') && !n.frame) n.consecrate = plot(a.consecrate);
     if (duties.includes('guard')) n.guard = plot(a.guard);
     if (duties.includes('track')) n.track = true;
     if (duties.includes('inspect')) n.inspect = plot(a.inspect);
@@ -302,7 +329,7 @@ class Game {
           if (this.count('watchtower') > 0) {
             const others = this.alive().filter(p => !p.cult && p.id !== constable.id);
             const pair = shuffle([cult.name, others.length ? pick(others).name : cult.name]);
-            this.tell(constable.id, `From the watchtower you glimpsed the intruder. It was ${pair[0]} or ${pair[1]}.`);
+            this.tell(constable.id, `From the watchtower you glimpsed the intruder. It was ${pair[0]} or ${pair[1]}.`, { kind: 'glimpse', ids: pair.map(n => this.players.find(q => q.name === n).id) });
           } else this.tell(constable.id, 'You drove off a hooded figure, but could not see their face. A Watchtower would help.');
         } else {
           const v = pick(here);
@@ -323,20 +350,25 @@ class Game {
     // Role information
     for (const p of this.alive()) {
       const a = this.night[p.id] || {};
-      if (a.track) this.tell(p.id, tracks ? `Fresh tracks in the frost lead to the ${this.bname(this.grid[tracks.x][tracks.y].type)} at ${plotName(tracks.x, tracks.y)}.` : 'The frost was unbroken. No one went anywhere strange.');
+      if (a.track) {
+        if (!tracks) this.tell(p.id, 'The frost was unbroken. No one went anywhere strange.');
+        else if (Math.random() < 0.5) this.tell(p.id, `Fresh tracks in the frost run along column ${'ABCDEFGH'[tracks.x]}. Someone visited a building there.`, { kind: 'tracks', axis: 'col', n: tracks.x });
+        else this.tell(p.id, `Fresh tracks in the frost run along row ${tracks.y + 1}. Someone visited a building there.`, { kind: 'tracks', axis: 'row', n: tracks.y });
+      }
       if (a.inspect) {
         const c = this.grid[a.inspect.x][a.inspect.y];
-        this.tell(p.id, !c ? `${plotName(a.inspect.x, a.inspect.y)} is an empty plot.` : c.consecrated ? `Under the ${this.bname(c.type)} at ${plotName(a.inspect.x, a.inspect.y)} you find chalk sigils and black wax. Someone has consecrated it.` : `The ${this.bname(c.type)} at ${plotName(a.inspect.x, a.inspect.y)} is sound and ordinary.`);
+        this.tell(p.id, !c ? `${plotName(a.inspect.x, a.inspect.y)} is an empty plot.` : c.consecrated ? `Under the ${this.bname(c.type)} at ${plotName(a.inspect.x, a.inspect.y)} you find chalk sigils and black wax. Someone has consecrated it.` : `The ${this.bname(c.type)} at ${plotName(a.inspect.x, a.inspect.y)} is sound and ordinary.`, c ? { kind: c.consecrated ? 'consecrated' : 'clean', x: a.inspect.x, y: a.inspect.y } : null);
       }
       if (a.read) {
         const t = this.player(a.read);
-        this.tell(p.id, t.cult ? `You read ${t.name}. Their soul is hollow and cold.` : `You read ${t.name}. Their soul is troubled, but honest.`);
+        const hollow = t.cult || t.id === cn.frame;
+        this.tell(p.id, hollow ? `You read ${t.name}. Their soul is hollow and cold.` : `You read ${t.name}. Their soul is troubled, but honest.`, { kind: hollow ? 'cult' : 'honest', id: t.id });
       }
     }
     const mayor = this.byRole('Mayor');
     if (mayor && (this.day - 1) % 2 === 1) {
       const options = this.alive().filter(p => !p.cult && p.id !== mayor.id && !this.mayorTold.has(p.id));
-      if (options.length) { const t = pick(options); this.mayorTold.add(t.id); this.tell(mayor.id, `The ledgers are clean: ${t.name} can be trusted.`); }
+      if (options.length) { const t = pick(options); this.mayorTold.add(t.id); this.tell(mayor.id, `The ledgers are clean: ${t.name} can be trusted.`, { kind: 'honest', id: t.id }); }
     }
 
     const income = 2 + this.count('workshop') * 2 + this.count('mill');
@@ -364,7 +396,7 @@ class Game {
   }
 
   checkWin() {
-    if (this.ritualProgress() >= RITUAL_SITES) {
+    if (this.ritualProgress() >= this.sites) {
       this.say('At midnight every consecrated building begins to hum. Seen from the church tower, the streets of Ashworth form a sigil. Something below the town opens its eyes.', 'news');
       return this.end('cult'), true;
     }
@@ -404,14 +436,16 @@ class Game {
       maxDays: MAX_DAYS,
       hostId: this.hostId,
       you: me ? { id: me.id, name: me.name, role: me.role, cult: me.cult, exiled: me.exiled, duties: started && this.phase === 'night' ? this.nightDuties(me) : [] } : null,
-      players: this.players.map(p => ({ id: p.id, name: p.name, role: p.role, exiled: p.exiled, connected: p.connected, done: !!(this.submitted && this.submitted.has(p.id)), cult: reveal || p.exiled ? p.cult : undefined })),
+      players: this.players.map(p => ({ id: p.id, name: p.name, role: p.role, bot: !!p.bot, exiled: p.exiled, connected: p.connected, done: !!(this.submitted && this.submitted.has(p.id)), cult: reveal || p.exiled ? p.cult : undefined })),
       wood: this.wood,
       grid: started ? this.grid.map(col => col.map(c => c && { type: c.type, consecrated: reveal || (me && me.cult) ? c.consecrated : undefined })) : null,
       villagers: started ? this.villagers.map(v => ({ id: v.id, name: v.name, x: v.x, y: v.y, taken: v.taken })) : [],
       ritual: started && (reveal || (me && me.cult)) ? this.ritual : null,
       ritualProgress: started && (reveal || (me && me.cult)) ? this.ritualProgress() : null,
+      ritualSites: started ? this.sites : null,
       proposals: (this.proposals || []).map(m => ({ id: m.id, by: m.by, kind: m.kind, type: m.type, x: m.x, y: m.y, target: m.target, text: this.describe(m) })),
       submitted: !!(this.submitted && this.submitted.has(id)),
+      claimedToday: !!(this.claimedBy && this.claimedBy[id] === this.day),
       log: this.log.slice(-60),
       chat: this.chat.slice(-60),
       private: (this.private[id] || []).slice(-30),
@@ -419,6 +453,36 @@ class Game {
       buildings: BUILDINGS,
       roleInfo: ROLE_INFO,
     };
+  }
+
+  // A human's formal statement to the council. Bots weigh it like any other claim. It can be a lie.
+  humanClaim(id, f) {
+    const p = this.player(id);
+    if (!p || p.exiled) throw new Error('You have no voice on the council.');
+    if (this.phase === 'lobby' || this.phase === 'over') throw new Error('The council is not in session.');
+    this.claimedBy = this.claimedBy || {};
+    if (this.claimedBy[id] === this.day) throw new Error('You have already made a formal statement today.');
+    f = f || {};
+    const t = this.player(f.id);
+    const okPlot = Number.isInteger(f.x) && Number.isInteger(f.y) && f.x >= 0 && f.y >= 0 && f.x < SIZE && f.y < SIZE;
+    let text, fact;
+    if (f.kind === 'cult' || f.kind === 'honest') {
+      if (!t || t.id === id) throw new Error('Choose another councillor.');
+      text = f.kind === 'cult' ? `I read ${t.name}. Their soul is hollow. They are the cult.` : `${t.name} is honest. I'd stake my seat on it.`;
+      fact = { kind: f.kind, id: t.id };
+    } else if (f.kind === 'consecrated' || f.kind === 'clean') {
+      if (!okPlot || !this.grid[f.x][f.y]) throw new Error('Choose a building on the map.');
+      text = f.kind === 'consecrated' ? `The building at ${plotName(f.x, f.y)} has been consecrated. Pull it down.` : `I checked ${plotName(f.x, f.y)}. It's clean.`;
+      fact = { kind: f.kind, x: f.x, y: f.y };
+    } else throw new Error('Unknown statement.');
+    this.claimedBy[id] = this.day;
+    this.claim(id, text, fact);
+  }
+
+  // A bot's public statement, with a machine-readable claim other bots can weigh.
+  claim(id, text, fact) {
+    this.addChat(id, text);
+    (this.claims = this.claims || []).push({ by: id, day: this.day, ...fact });
   }
 
   addChat(id, text) {
@@ -430,4 +494,4 @@ class Game {
   }
 }
 
-module.exports = { Game, BUILDINGS, SIZE, plotName };
+module.exports = { Game, BUILDINGS, SIZE, plotName, MAX_DAYS, RITUAL_SITES };
